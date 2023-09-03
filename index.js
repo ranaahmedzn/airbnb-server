@@ -28,6 +28,12 @@ async function run() {
   try {
     const roomsCollection = client.db('airbnbDB').collection('rooms')
 
+    // creating index for roomsCollection
+    const indexKeys = { location: 1 };
+    const indexOptions = { name: "locationIndex" };
+    const result = await roomsCollection.createIndex(indexKeys, indexOptions);
+    // console.log(result)
+
     app.get('/rooms', async (req, res) => {
       const result = await roomsCollection.find({}).toArray()
       res.send(result)
@@ -82,7 +88,7 @@ async function run() {
       filteredRooms = filteredRooms.filter(room => room.price >= minPrice && room.price <= maxPrice)
 
       if (beds) {
-        filteredRooms = filteredRooms?.filter(room => room.bed === beds);
+        filteredRooms = filteredRooms?.filter(room => room.beds === beds);
       }
 
       if (bedrooms) {
@@ -96,7 +102,47 @@ async function run() {
       res.send(filteredRooms)
     })
 
-    
+    // get rooms by the search queries
+    app.get("/rooms/search", async (req, res) => {
+      const location = req.query.location;
+      const dateRange = req.query.dateRange;
+      const checkIn = dateRange.split(' - ')[0];
+      const checkOut = dateRange.split(' - ')[1];
+      const guests = req.query.guests;
+      const infants = req.query.infants;
+      const pets = req.query.pets;
+
+      let searchedRooms;
+      const query = {};
+      searchedRooms = await roomsCollection.find({}).toArray()
+
+      // Add conditions to the query only if the values are not "0"
+      if (guests !== '0') {
+        query['holdingCapacity.guests'] = guests;
+      }
+      if (infants !== '0') {
+        query['holdingCapacity.infants'] = infants;
+      }
+      if (pets !== '0') {
+        query['holdingCapacity.pets'] = pets;
+      }
+
+      if (Object.entries(query).length > 0) {
+        searchedRooms = await roomsCollection.find(query).toArray();
+      }
+      
+      if (location) {
+        searchedRooms = await roomsCollection.find({ location: { $regex: location, $options: "i" } }).toArray();
+      }
+
+      if(checkIn !== checkOut){
+        searchedRooms = await roomsCollection.find({dateRange: dateRange}).toArray();
+      }
+      
+      res.send(searchedRooms)
+    });
+
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
